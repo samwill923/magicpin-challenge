@@ -602,14 +602,14 @@ async def metadata():
     return {
         "team_name": os.environ.get("TEAM_NAME", "Vera Next"),
         "team_members": [m.strip() for m in
-                         os.environ.get("TEAM_MEMBERS", "stamsonwill").split(",") if m.strip()],
+                         os.environ.get("TEAM_MEMBERS", "Kush Verma").split(",") if m.strip()],
         "model": CLIENT.model_label(),
         "approach": ("Deterministic fact-extraction layer (numbers, peer deltas, matched digest "
                      "item, plain-English signals) + one temperature-0 LLM call routed by "
                      "trigger.kind + validation pass (anti-fabrication, single-CTA, taboo, "
                      "no-URL) with one corrective retry, then a template fallback that still "
                      "uses real numbers. Regex-first conversation state machine for replies."),
-        "contact_email": os.environ.get("CONTACT_EMAIL", "stamsonwill@gmail.com"),
+        "contact_email": os.environ.get("CONTACT_EMAIL", "kushram2004@gmail.com"),
         "version": "1.0.0",
         "submitted_at": os.environ.get("SUBMITTED_AT", "2026-09-26T00:00:00Z"),
     }
