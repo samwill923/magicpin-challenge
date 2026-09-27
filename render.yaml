@@ -1,0 +1,47 @@
+# Render blueprint for the magicpin Vera bot.
+#
+# IMPORTANT: one worker only. All context and conversation state is in memory,
+# so a second worker would serve half the requests from an empty store.
+#
+# The build step expands the seed dataset so the bot is never blind about a
+# context the judge has not pushed yet (see README, "contexts_loaded").
+services:
+  - type: web
+    name: vera-next-bot
+    runtime: python
+    plan: free
+    region: singapore
+    buildCommand: pip install -r requirements.txt && python dataset/generate_dataset.py --seed-dir dataset --out dataset/expanded
+    startCommand: uvicorn bot:app --host 0.0.0.0 --port $PORT --workers 1
+    healthCheckPath: /v1/healthz
+    autoDeployTrigger: commit
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: PYTHONUTF8
+        value: "1"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      # Secrets: set these in the Render dashboard, never in this file.
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: LLM_PROVIDER
+        value: groq
+      # Groq free tier: 8000 tokens/minute, 200k/day per model.
+      - key: LLM_TPM
+        value: "8000"
+      # Stay inside the judge simulator's 15s client timeout.
+      - key: TICK_BUDGET_SECONDS
+        value: "11.5"
+      - key: REPLY_BUDGET_SECONDS
+        value: "11.0"
+      - key: TEAM_NAME
+        value: Vera Next
+      - key: TEAM_MEMBERS
+        value: stamsonwill
+      - key: CONTACT_EMAIL
+        value: stamsonwill@gmail.com

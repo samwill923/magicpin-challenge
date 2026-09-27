@@ -1,0 +1,5 @@
+__pycache__/
+.env
+dataset/expanded/
+*.pyc
+.llm_cache.json
