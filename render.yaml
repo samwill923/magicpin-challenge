@@ -42,6 +42,6 @@ services:
       - key: TEAM_NAME
         value: Vera Next
       - key: TEAM_MEMBERS
-        value: stamsonwill
+        value: Kush Verma
       - key: CONTACT_EMAIL
-        value: stamsonwill@gmail.com
+        value: kushram2004@gmail.com

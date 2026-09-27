@@ -88,9 +88,9 @@ later tick rather than being dropped.
 ## Running it
 
 ```bash
-pip install fastapi "uvicorn[standard]"
+pip install -r requirements.txt
 cp .env.example .env            # add GROQ_API_KEY (Gemini optional as backup)
-uvicorn bot:app --host 0.0.0.0 --port 8080
+uvicorn bot:app --host 0.0.0.0 --port 8080 --workers 1   # one worker: state is in memory
 
 python selftest.py              # 174 contract checks, no LLM key needed
 python make_submission.py       # writes submission.jsonl for the 30 canonical pairs
@@ -99,6 +99,9 @@ python run_judge.py all         # magicpin's judge_simulator, config from .env
 ```
 
 Bind to `0.0.0.0` (not `127.0.0.1`) so `localhost` resolves on either IP stack.
+Deployment: `render.yaml` is a ready Render blueprint; `DEPLOY.md` has the steps and the
+operational traps (free-tier spin-down vs the 2s healthz budget, one worker only, and why a
+redeploy mid-test would wipe every stored context).
 
 Files: `bot.py` (endpoints, state, `compose()`), `composer.py` (facts, routing, prompts,
 validation, fallback), `conversation_handlers.py` (reply state machine), `llm.py` (providers,
