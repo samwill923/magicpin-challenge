@@ -20,6 +20,7 @@ import time
 
 import composer
 from llm import CLIENT
+from sanitizer import sanitize_body
 
 # --------------------------------------------------------------------------
 # Signal detection
@@ -238,7 +239,7 @@ def compose_reply(branch: str, state, contexts: dict, message: str,
                                    str(state.turn_count) + "|a" + str(attempt), deadline)
         if not out:
             break
-        cand = str(out.get("body", "")).strip()
+        cand = sanitize_body(str(out.get("body", "")).strip())
         cand_cta = str(out.get("cta", route["cta"])).strip() or route["cta"]
         extra = composer.validate(cand, cand_cta, f, route, state.sent_norms)
         if branch == "commitment":
@@ -271,6 +272,12 @@ def _action_mode_problems(body: str) -> list:
 
 
 def _fallback_reply(branch: str, state, f, merchant: dict, customer) -> dict:
+    out = _fallback_reply_raw(branch, state, f, merchant, customer)
+    out["body"] = sanitize_body(out.get("body", ""))
+    return out
+
+
+def _fallback_reply_raw(branch: str, state, f, merchant: dict, customer) -> dict:
     name = f.salutation
     offer = f.active_offers[0] if f.active_offers else ""
     anchor = f.anchors[0].split(" = ", 1)[-1] if f.anchors else ""

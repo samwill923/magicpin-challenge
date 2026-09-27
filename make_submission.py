@@ -27,6 +27,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import composer
+from sanitizer import sanitize_body
 
 HERE = Path(__file__).parent
 DATA = HERE / "dataset"
@@ -58,7 +59,12 @@ def main() -> int:
     ap.add_argument("--only", default="", help="comma-separated test_ids")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--out", default=str(HERE / "submission.jsonl"))
+    ap.add_argument("--sanitize", action="store_true",
+                    help="re-run the sanitiser over an existing submission.jsonl and exit")
     args = ap.parse_args()
+
+    if args.sanitize:
+        return sanitize_existing(Path(args.out))
 
     ensure_expanded()
     categories = load("categories", "slug")
@@ -124,6 +130,26 @@ def main() -> int:
     if by_source.get("template"):
         print("[warn] " + str(by_source["template"]) + " line(s) came from the deterministic "
               "fallback - set GROQ_API_KEY for full quality")
+    return 0
+
+
+def sanitize_existing(path: Path) -> int:
+    """Apply the outgoing-message sanitiser to a submission file in place."""
+    rows, changed = [], 0
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        clean = sanitize_body(row["body"])
+        if clean != row["body"]:
+            changed += 1
+            print("  " + row["test_id"] + ": " + clean)
+            row["body"] = clean
+        rows.append(row)
+    with path.open("w", encoding="utf-8", newline="\n") as fh:
+        for row in rows:
+            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+    print("[sanitize] " + str(changed) + " of " + str(len(rows)) + " bodies rewritten")
     return 0
 
 

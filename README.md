@@ -28,6 +28,14 @@ outside slot booking, generic "X% off" when a service-at-price offer exists, pre
 self-reintroductions. Violations are fed back into a single rewrite; if that also fails, a
 deterministic template composed from the merchant's real numbers is used.
 
+**Output sanitiser** (`sanitizer.py`), applied to every live send and to `submission.jsonl` alike
+(`python make_submission.py --sanitize`). It strips dashes of every kind, since em dashes and
+hyphenated compounds read as machine-written on WhatsApp: em and en dashes become commas, compounds
+open up ("click through", "week on week"), ranges become "to", and ISO dates are protected so
+`2026-12-15` survives. It also enforces the language rule at the text level: a message is either
+wholly Hinglish or wholly English, so a trailing "Bhej dun?" bolted onto English prose is removed
+and the CTA repaired. Merchants get Hinglish only when their `identity.languages` includes Hindi.
+
 **Conversation state machine** (`conversation_handlers.py`). Classification is regex-first, so it
 never times out: opt-out/hostile → `end`; canned or verbatim-repeated text → one nudge addressed to
 the owner, then `wait 4h`, then `end` (tracked per merchant, not just per conversation, because the

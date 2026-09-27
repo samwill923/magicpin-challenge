@@ -20,6 +20,7 @@ import re
 import time
 
 from llm import CLIENT
+from sanitizer import has_dash, sanitize_body
 
 # --------------------------------------------------------------------------
 # Static knowledge
@@ -192,17 +193,21 @@ ROUTES = {
         "cta": "open_ended", "template": "vera_reengage_v1",
     },
     "curious_ask_due": {
-        "frame": ("Ask ONE short question about what is actually happening in their shop this "
-                  "week, and state up front what you will build from their answer. Make a "
-                  "specific guess from FACTS so replying is easy (confirm or correct)."),
+        "frame": ("Ask ONE short, direct question about what is actually happening in their shop "
+                  "this week, and state up front exactly what you will build from their answer. "
+                  "Do NOT guess at the answer or speculate about their week: open with one real "
+                  "number of theirs from FACTS, then ask."),
         "levers": "asking the merchant + reciprocity + low effort",
         "cta": "open_ended", "template": "vera_curious_ask_v1",
     },
     "active_planning_intent": {
         "frame": ("They already said yes to this idea. Do NOT ask another qualifying question. "
-                  "Deliver a concrete first draft now: 3-4 short lines with real prices/tiers "
-                  "anchored on their existing offer in FACTS, then ask only whether to proceed "
-                  "with the next step you name."),
+                  "Deliver a concrete first draft now, 3 or 4 short lines, built on their existing "
+                  "offer in FACTS. EVERY price must already appear in FACTS: if the plan needs a "
+                  "rate FACTS does not give you (a bulk rate, a tier, a discount), do not invent "
+                  "one - lay out the structure with the real price you do have and ask them to set "
+                  "that one number. Close by asking only whether to proceed with the step you "
+                  "name."),
         "levers": "effort externalisation + momentum",
         "cta": "binary_confirm_cancel", "template": "vera_planning_draft_v1",
     },
@@ -309,7 +314,23 @@ def route_for(trigger: dict, has_customer: bool) -> dict:
     kind = (trigger or {}).get("kind", "")
     route = dict(ROUTES.get(kind, DEFAULT_ROUTE))
     route["kind"] = kind
-    if ((trigger or {}).get("payload") or {}).get("placeholder"):
+    payload = (trigger or {}).get("payload") or {}
+    try:
+        days_until = int(payload.get("days_until") or payload.get("days_to_wedding") or 0)
+    except (TypeError, ValueError):
+        days_until = 0
+    if kind == "festival_upcoming" and days_until > 45:
+        # Diwali in 188 days is not a reason to message anyone today. Lead with
+        # something the merchant can act on this week instead.
+        route["frame"] = (
+            "The festival in the payload is " + str(days_until) + " days away, far too distant to "
+            "act on, so do NOT lead with it and do not build the message around it. Lead with what "
+            "is live in their numbers right now (their views, calls or click-through against the "
+            "peer average) or the current season note in FACTS, propose the one thing worth doing "
+            "this week, and mention the festival at most as a short planning aside, or not at all.")
+        route["levers"] = "current performance + reciprocity"
+        route["cta"] = "binary_yes_no"
+    if payload.get("placeholder"):
         # The event fired but carries no detail. The kind-specific frame would
         # ask for names, numbers and deadlines we do not have, which is how a
         # model ends up inventing a competitor - so swap in a detail-free frame.
@@ -473,17 +494,17 @@ def _language_rule(merchant: dict, customer: dict | None, category: dict) -> str
     code_mix = ((category or {}).get("voice") or {}).get("code_mix", "")
     extra = [local[c] for c in local if c in langs]
     if "hi" in langs and code_mix == "hindi_english_natural":
-        rule = ("English-led, with Hindi-English code-mix in Roman script only where a whole "
-                "clause reads naturally that way (e.g. 'Bhej dun?' as the closing ask). Never tack "
-                "a Hindi filler onto the end of an English sentence. Numbers, prices and technical "
-                "terms stay in English.")
-    elif "hi" in langs:
-        rule = ("Write in English only. This category's voice is English-primary, so do not insert "
-                "Hindi words - a half-Hindi sentence reads like a typo here.")
+        # All in, or not at all: a Hindi phrase bolted onto an English sentence
+        # reads like a mistake, which is what the judge sees too.
+        rule = ("This merchant speaks Hindi, so write the WHOLE message in natural Hinglish - "
+                "Roman script, the way an Indian business owner actually types on WhatsApp. Every "
+                "sentence code-mixed, not one Hindi phrase stapled to English prose. Numbers, "
+                "prices, dates and technical terms stay in English/numerals.")
     else:
-        rule = "Write in clear, simple English."
-    if extra:
-        rule += " The merchant also speaks " + "/".join(extra) + "; a single local word is fine."
+        rule = ("Write in English only, start to finish. Do not insert Hindi or any other "
+                "language: a part-Hindi sentence reads like a typo here.")
+    if extra and "hi" not in langs:
+        rule += " The merchant also speaks " + "/".join(extra) + ", but keep this message English."
     return rule
 
 
@@ -867,6 +888,8 @@ RULES (breaking any one rejects the message):
 7. Offer the concrete artefact you will produce (draft, post, list, audit) and cap the effort you need from them.
 8. 40-75 words, 2-4 short sentences. Cut every word that carries no fact.
 9. Never expose internal jargon, field names or trigger names.
+10. No dashes of any kind - no em dash, no en dash, no hyphenated compounds. Use commas and full stops, and write "click through", "week on week", "3 month recall".
+11. Never guess, hedge or speculate. No "I'm guessing", "probably", "perhaps". State what FACTS supports; if you want their input, ask a direct question.
 
 Output one JSON object only:
 {"body": "<message>", "cta": "<open_ended|binary_yes_no|binary_confirm_cancel|multi_choice_slot|none>", "rationale": "<one sentence: anchor, lever, expected reply>"}"""
@@ -881,6 +904,8 @@ RULES (breaking any one rejects the message):
 5. Stay inside the customer's consented message types.
 6. No URLs, phone numbers, emails or {{1}} placeholders.
 7. 35-65 words, warm and easy to read.
+8. No dashes of any kind - no em dash, no en dash, no hyphenated compounds. Use commas, and write "6 month cleaning", "walk in".
+9. Never guess or speculate about them. Only what FACTS says.
 
 Output one JSON object only:
 {"body": "<message>", "cta": "<open_ended|binary_yes_no|binary_confirm_cancel|multi_choice_slot|none>", "rationale": "<one sentence: anchor, lever, expected reply>"}"""
@@ -1012,6 +1037,14 @@ def validate(body: str, cta: str, f: Facts, route: dict,
                             'from FACTS')
 
     problems += _citation_problems(text, f.text())
+
+    if has_dash(text):
+        problems.append("remove every dash: use commas, or open the compound up "
+                        '("click through", "week on week")')
+    if re.search(r"\b(i'?m guessing|i am guessing|my guess|i suspect|probably|perhaps|maybe)\b",
+                 lower):
+        problems.append("no guessing or hedging - state only what FACTS supports, and ask a "
+                        "direct question if you want their input")
 
     if banned_bodies and _normalize(text) in banned_bodies:
         problems.append("this exact message was already sent - say something new")
@@ -1212,7 +1245,7 @@ def compose_message(category: dict, merchant: dict, trigger: dict, customer: dic
         out = CLIENT.complete_json(system, prompt, cache_key + "|a" + str(attempt), deadline)
         if not out:
             break
-        cand_body = str(out.get("body", "")).strip()
+        cand_body = sanitize_body(str(out.get("body", "")).strip())
         cand_cta = str(out.get("cta", route["cta"])).strip() or route["cta"]
         cand_rat = str(out.get("rationale", "")).strip()
         problems = validate(cand_body, cand_cta, f, route, banned_bodies)
@@ -1225,6 +1258,7 @@ def compose_message(category: dict, merchant: dict, trigger: dict, customer: dic
 
     if not body:
         body, cta = template_body(f, route, customer, trigger)
+        body = sanitize_body(body)
         rationale = ("Deterministic fallback composed from this merchant's own figures and the "
                      "matched category item; no LLM output was available.")
         source = "template"
